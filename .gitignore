@@ -1,0 +1,108 @@
+# Virtual environments
+env/
+venv/
+.venv
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Database
+*.db
+*.db-journal
+*.sqlite3
+*.sqlite
+
+# Logs
+logs/
+*.log
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.coverage.*
+*.cover
+
+# Ruff
+.ruff_cache/
+**/.ruff_cache/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+*.DS_Store
+**/.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# Docker
+*.pid
+.dockerignore
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Lock files
+uv.lock
+poetry.lock
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+.idea_modules/
+
+# Backup files
+*.bak
+*.tmp
+*.temp
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+
+*.pdf
+solution.ipynb
+solution2.ipynb
+submission.csv
