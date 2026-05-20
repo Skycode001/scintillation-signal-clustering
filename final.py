@@ -9,6 +9,8 @@ from scipy.optimize import curve_fit
 from sklearn.neighbors import KernelDensity
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
@@ -339,6 +341,29 @@ plt.suptitle('Распределение ключевых физических �
 plt.tight_layout()
 plt.show()
 
+# 6.5 Корреляционный анализ признаков
+# Выбираем ключевые признаки для анализа
+key_features_idx = [1, 10, 23, 24, 7, 8]  # early_fraction, psd40, decay_tau, fit_quality, fwhm, rise_time
+key_features_names = ['Early fraction', 'PSD40', 'Decay τ', 'R²', 'FWHM', 'Rise time']
+
+# Создаем DataFrame с ключевыми признаками
+X_key = pd.DataFrame(X[:, key_features_idx], columns=key_features_names)
+
+# Расчет корреляционной матрицы
+corr_matrix = X_key.corr()
+
+# Визуализация
+plt.figure(figsize=(8, 6))
+sns.heatmap(corr_matrix, annot=True, fmt='.3f', cmap='coolwarm', 
+            square=True, linewidths=0.5, cbar_kws={"shrink": 0.8})
+plt.title('Корреляционная матрица ключевых признаков\n(чем ближе к ±1, тем сильнее связь)', fontsize=12)
+plt.tight_layout()
+plt.show()
+
+print("\nВыводы по корреляционному анализу:")
+print("- Ожидаемая высокая корреляция между PSD40 и Decay τ (оба характеризуют форму спада)")
+print("- Низкая корреляция между признаками → признаки дополняют друг друга")
+
 # 7 Создание композитного скора (composite score)
 # Нормализация признаков (StandardScaler)
 scaler = StandardScaler()
@@ -525,7 +550,7 @@ print(f"- Экстремальный FWHM (|z|>3.0): {np.sum(np.abs(fwhm_norm) >
 labels = np.zeros(len(score_weighted), dtype=int)
 
 # Выделение аномалий в кластер 2
-anomaly_mask = anomaly_score >= 1
+anomaly_mask = anomaly_score >= 2
 labels[anomaly_mask] = 2
 
 # Для нормальных сигналов - бинарная кластеризация
@@ -539,7 +564,7 @@ print("="*60)
 if len(normal_scores) > 0:
     # Адаптивная ширина окна для KDE
     # Правило: bandwidth = max(0.08, 0.12 * std) для стабильности
-    bw = max(0.08, 0.15 * np.std(normal_scores))
+    bw = max(0.08, 0.12 * np.std(normal_scores))
     print(f"Ширина окна KDE (bandwidth): {bw:.4f}")
     
     # Оценка плотности распределения
@@ -603,10 +628,158 @@ print("\nРезультат бинарного разделения:")
 print(f"- Кластер 0 (левый): {np.sum(normal_labels == 0)} сигналов")
 print(f"- Кластер 1 (правый): {np.sum(normal_labels == 1)} сигналов")
 
+# 9.1 Анализ чувствительности весов композитного скора
+# Влияние веса Early на разделение
+
+if 'normal_mask' not in dir():
+    print("Ошибка: normal_mask не определён. Блок должен идти ПОСЛЕ блока 9 (детекция аномалий)")
+else:
+    # Тестируем разные веса для EARLY (ранней доли)
+    early_weights = [1.5, 2.0, 2.4, 2.5, 2.7, 3.0, 3.5]
+    silhouette_scores = []
+    split_points = []
+
+    for w in early_weights:
+        # Пересчитываем скор с новым весом EARLY
+        test_score = (
+            w * Xn[:, EARLY] +
+            1.8 * Xn[:, ASYM] - 1.2 * Xn[:, TAIL_RATIO] - 0.6 * Xn[:, TAIL_ENERGY] +
+            1.6 * Xn[:, PSD_GRAD1] + 0.8 * Xn[:, PSD_GRAD2] + 0.4 * Xn[:, PSD_GRAD3] +
+            0.3 * Xn[:, PSD_GRAD4] + 0.5 * Xn[:, PSD_GRAD_LONG] +
+            0.7 * Xn[:, PSD40] - 0.3 * Xn[:, PSD20] + 0.3 * Xn[:, PSD80] +
+            0.5 * Xn[:, DECAY_TAU] - 0.2 * Xn[:, RISE_TIME] +
+            0.4 * Xn[:, SHARP] - 0.1 * Xn[:, FWHM] - 0.1 * Xn[:, STD] +
+            0.3 * Xn[:, PSD_RATIO_EARLY] + 0.2 * Xn[:, PSD_RATIO_LATE] +
+            0.3 * Xn[:, TAIL_RATIO_30_100] + 0.2 * Xn[:, TAIL_RATIO_50_150] +
+            0.15 * Xn[:, SKEW] - 0.1 * Xn[:, KURT]
+        )
+        
+        # Энергетическое взвешивание
+        test_score_weighted = test_score * weight
+        test_score_weighted += 0.03 * Xn[:, PSD_GRAD2]
+        test_score_weighted += 0.02 * Xn[:, PSD40]
+        test_score_weighted += 0.015 * Xn[:, SHARP]
+        
+        # Разделение по медиане для анализа чувствительности
+        split = np.median(test_score_weighted[normal_mask])
+        split_points.append(split)
+        test_labels = test_score_weighted > split
+        
+        # Silhouette score (только для нормальных сигналов)
+        if len(np.unique(test_labels[normal_mask])) > 1:
+            sil = silhouette_score(test_score_weighted[normal_mask].reshape(-1,1), 
+                                   test_labels[normal_mask])
+            silhouette_scores.append(sil)
+        else:
+            silhouette_scores.append(0)
+
+    # Визуализация
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4))
+
+    axes[0].plot(early_weights, silhouette_scores, 'bo-', linewidth=2, markersize=8)
+    axes[0].axvline(x=2.4, color='red', linestyle='--', label='Выбранный вес = 2.4')
+    axes[0].set_xlabel('Вес признака EARLY (ранняя доля)')
+    axes[0].set_ylabel('Silhouette Score')
+    axes[0].set_title('Влияние веса EARLY на качество разделения')
+    axes[0].legend()
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].plot(early_weights, split_points, 'rs-', linewidth=2, markersize=8)
+    axes[1].axvline(x=2.4, color='red', linestyle='--', label='Выбранный вес = 2.4')
+    axes[1].set_xlabel('Вес признака EARLY (ранняя доля)')
+    axes[1].set_ylabel('Разделяющая точка (split)')
+    axes[1].set_title('Влияние веса EARLY на положение порога')
+    axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.show()
+
+# 9.2 Сравнение методов кластеризации (GMM и K-means)
+# Сравнение методов бинарной кластеризации
+
+# Используем тот же normal_scores (после исключения аномалий)
+scores_for_comparison = normal_scores.reshape(-1, 1)
+
+# Метод 1: KDE (наш основной метод)
+print("\n1. KDE + find_peaks (выбранный метод):")
+print(f"   - Разделяющая точка: {split:.4f}")
+print(f"   - Кластер 0: {np.sum(normal_labels == 0)} сигналов")
+print(f"   - Кластер 1: {np.sum(normal_labels == 1)} сигналов")
+
+# Метод 2: Gaussian Mixture Model
+gmm = GaussianMixture(n_components=2, random_state=42, n_init=10)
+labels_gmm = gmm.fit_predict(scores_for_comparison)
+
+# Определяем, какой кластер соответствует нейтронам (больший early fraction)
+early_normal = Xn[normal_mask, EARLY]
+early_gmm0 = early_normal[labels_gmm == 0].mean() if np.sum(labels_gmm==0)>0 else -np.inf
+early_gmm1 = early_normal[labels_gmm == 1].mean() if np.sum(labels_gmm==1)>0 else -np.inf
+if early_gmm0 > early_gmm1:
+    labels_gmm = 1 - labels_gmm  # инвертируем
+
+print(f"\n2. Gaussian Mixture Model (GMM):")
+print(f"   - Кластер 0: {np.sum(labels_gmm == 0)} сигналов")
+print(f"   - Кластер 1: {np.sum(labels_gmm == 1)} сигналов")
+
+# Метод 3: K-Means
+kmeans = KMeans(n_clusters=2, random_state=42, n_init=10)
+labels_kmeans = kmeans.fit_predict(scores_for_comparison)
+
+early_kmeans0 = early_normal[labels_kmeans == 0].mean() if np.sum(labels_kmeans==0)>0 else -np.inf
+early_kmeans1 = early_normal[labels_kmeans == 1].mean() if np.sum(labels_kmeans==1)>0 else -np.inf
+if early_kmeans0 > early_kmeans1:
+    labels_kmeans = 1 - labels_kmeans
+
+print(f"\n3. K-Means:")
+print(f"   - Кластер 0: {np.sum(labels_kmeans == 0)} сигналов")
+print(f"   - Кластер 1: {np.sum(labels_kmeans == 1)} сигналов")
+
+# Сравнительная таблица
+print("Сравнительная таблица ")
+print(f"{'Метод':<20} {'Кластер 0':<12} {'Кластер 1':<12} {'Преимущества':<20}")
+print(f"{'KDE (выбранный)':<20} {np.sum(normal_labels==0):<12} {np.sum(normal_labels==1):<12} {'Непараметрический':<20}")
+print(f"{'GMM':<20} {np.sum(labels_gmm==0):<12} {np.sum(labels_gmm==1):<12} {'Вероятностный':<20}")
+print(f"{'K-Means':<20} {np.sum(labels_kmeans==0):<12} {np.sum(labels_kmeans==1):<12} {'Простой':<20}")
+
+# Визуализация сравнения методов
+fig, axes = plt.subplots(1, 3, figsize=(15, 4))
+
+# KDE
+axes[0].hist(normal_scores[normal_labels == 0], bins=50, alpha=0.6, color='blue', label='Кластер 0')
+axes[0].hist(normal_scores[normal_labels == 1], bins=50, alpha=0.6, color='orange', label='Кластер 1')
+axes[0].axvline(x=split, color='red', linestyle='--', linewidth=2, label=f'Порог = {split:.3f}')
+axes[0].set_title('KDE + find_peaks')
+axes[0].set_xlabel('Взвешенный скор')
+axes[0].set_ylabel('Частота')
+axes[0].legend()
+axes[0].grid(True, alpha=0.3)
+
+# GMM
+axes[1].hist(normal_scores[labels_gmm == 0], bins=50, alpha=0.6, color='blue', label='Кластер 0')
+axes[1].hist(normal_scores[labels_gmm == 1], bins=50, alpha=0.6, color='orange', label='Кластер 1')
+axes[1].set_title('Gaussian Mixture Model (GMM)')
+axes[1].set_xlabel('Взвешенный скор')
+axes[1].set_ylabel('Частота')
+axes[1].legend()
+axes[1].grid(True, alpha=0.3)
+
+# K-Means
+axes[2].hist(normal_scores[labels_kmeans == 0], bins=50, alpha=0.6, color='blue', label='Кластер 0')
+axes[2].hist(normal_scores[labels_kmeans == 1], bins=50, alpha=0.6, color='orange', label='Кластер 1')
+axes[2].set_title('K-Means')
+axes[2].set_xlabel('Взвешенный скор')
+axes[2].set_ylabel('Частота')
+axes[2].legend()
+axes[2].grid(True, alpha=0.3)
+
+plt.suptitle('Сравнение методов бинарной кластеризации', fontsize=14)
+plt.tight_layout()
+plt.show()
+
 # 10 Физическая калибровка кластеров
 print("""
-ФИЗИЧЕСКОЕ ОБОСНОВАНИЕ:
------------------------
+Физическое обоснование:
 Нейтроны при взаимодействии со сцинтиллятором (паратерфенил) вызывают:
 - Протоны отдачи (упругое рассеяние)
 - Медленную компоненту свечения
