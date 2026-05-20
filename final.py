@@ -15,11 +15,10 @@ from sklearn.decomposition import PCA
 import warnings
 warnings.filterwarnings('ignore')
 
-from IPython.display import Image
-
 np.random.seed(42)
 
 # 1 Загрузка и первичный анализ данных (EDA)
+
 # Загрузка данных
 dataset = pd.read_csv(
     "Run200_Wave_0_1.txt",
@@ -37,7 +36,7 @@ print(f"   - {dataset.shape[1]} столбцов (включая метадан�
 print(f"\nПропущенные значения: {dataset.isnull().sum().sum()}")
 
 # Типы данных
-print(f"\nТипы данных:")
+print("\nТипы данных:")
 print(dataset.dtypes.value_counts())
 
 # Удаляем метаданные (первые 4 столбца) и пустой последний столбец (504)
@@ -47,13 +46,15 @@ dataset_clean = dataset.drop([0, 1, 2, 3, 504], axis=1)
 dataset_clean.columns = list(range(500))
 
 print(f"\nРазмер после удаления метаданных: {dataset_clean.shape}")
-print(f"   - 500 временных отсчётов на сигнал")
+print("   - 500 временных отсчётов на сигнал")
 
 # Конвертация в numpy массив для ускорения
 signals = dataset_clean.values.astype(np.float32)
 print(f"\nФормат данных: {signals.dtype}, {signals.shape}")
 
-# 2 Визуализация сырых сигналов
+
+# 2. Визуализация сырых сигналов
+
 def plot_raw_signals(signals, n_samples=8, offset=500):
     """Визуализация нескольких сырых сигналов"""
     fig, axes = plt.subplots(2, 4, figsize=(16, 8))
@@ -80,7 +81,8 @@ def plot_raw_signals(signals, n_samples=8, offset=500):
 # Вызов функции визуализации
 plot_raw_signals(signals)
 
-# 3 Предобработка сигналов
+# 3. Предобработка сигналов
+
 def preprocess_signal(signal):
     """
     Предобработка одного сигнала:
@@ -129,9 +131,35 @@ plt.suptitle('Сравнение исходных и обработанных с
 plt.tight_layout()
 plt.show()
 
-# 4 Физические параметры сцинциляторов - теория
+# 4. Теоретическая справка (фмзические параметры)
 
-# 5 Экспоненциальная аппроксимация (фитинг)
+# Теоретическая справка выводится в консоль
+print("""
+СЦИНТИЛЛЯЦИОННЫЙ ДЕТЕКТОР:
+-------------------------
+При прохождении ионизирующей частицы через сцинтиллятор возникает вспышка света.
+Фотоэлектронный умножитель (ФЭУ) преобразует световой сигнал в электрический импульс.
+
+КЛЮЧЕВЫЕ ПАРАМЕТРЫ (согласно описанию PDF):
+-------------------------------------------
+1. ВРЕМЯ ВЫСВЕЧИВАНИЯ (τ) - время, за которое интенсивность свечения уменьшается в e раз
+   Формула: dn/dt = (N/τ) * exp(-t/τ)
+   - Нейтроны: большее время высвечивания (медленная компонента)
+   - Гамма-кванты: меньшее время высвечивания (быстрая компонента)
+
+2. PSD (Pulse Shape Discrimination) - отношение площадей под сигналом
+   Формула: PSD = (long - short) / long
+   - Позволяет различать типы частиц по форме импульса
+
+3. РАННЯЯ ДОЛЯ (Early Fraction) - отношение площади до пика к общей площади
+   - Характеризует скорость нарастания сигнала
+
+4. ЭНЕРГИЯ - полная площадь под кривой (интеграл)
+   - Пропорциональна энергии, потерянной частицей в сцинтилляторе
+""")
+
+# 5. Экспоненциальная аппроксимация (фитинг)
+
 def fit_exponential_decay_quality(tail, peak_val):
     """
     Аппроксимация хвоста сигнала экспоненциальной зависимостью
@@ -169,7 +197,7 @@ def fit_exponential_decay_quality(tail, peak_val):
         r2 = 1 - (ss_res / (ss_tot + 1e-8))
         
         return popt[0], r2
-    except:
+    except Exception:
         return 20.0, 0.0
 
 # Демонстрация фитинга на примере
@@ -206,12 +234,13 @@ plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-print(f"\nРезультат фитинга:")
+print("\nРезультат фитинга:")
 print(f"- Время высвечивания τ = {decay_tau:.2f} отсчётов")
 print(f"- Качество аппроксимации R² = {r2:.3f} (1 = идеально)")
 print("\nИсточник формулы: PDF, раздел 1.2.2 'Время высвечивания'")
 
-# 6 Извлечение признаков (Feature extraction)
+# 6. Извлечение признаков (FEATURE EXTRACTION)
+
 def extract_features(signal):
     """
     Извлечение 33 физически обоснованных признаков из одного сигнала
@@ -246,8 +275,8 @@ def extract_features(signal):
     # Хвосты разной длины (от пика)
     tail_lengths = [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120, 150, 200, 250, 300, 350, 400]
     tails = {}
-    for l in tail_lengths:
-        tails[f'tail{l}'] = np.sum(x[peak:min(peak+l, len(x))])
+    for length in tail_lengths:
+        tails[f'tail{length}'] = np.sum(x[peak:min(peak+length, len(x))])
     
     # Отношения хвостов (характеризуют форму спада)
     tail_ratios = {
@@ -261,8 +290,8 @@ def extract_features(signal):
     
     # PSD = (Long - Short) / Long  (из PDF, формула 2.6)
     psd_features = {}
-    for l in [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120, 150, 200]:
-        psd_features[f'psd{l}'] = (tails['tail200'] - tails[f'tail{l}']) / (tails['tail200'] + 1e-8)
+    for length in [5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100, 120, 150, 200]:
+        psd_features[f'psd{length}'] = (tails['tail200'] - tails[f'tail{length}']) / (tails['tail200'] + 1e-8)
     
     # Градиенты PSD (чувствительны к форме импульса)
     psd_grad1 = psd_features['psd80'] - psd_features['psd20']
@@ -341,7 +370,8 @@ plt.suptitle('Распределение ключевых физических �
 plt.tight_layout()
 plt.show()
 
-# 6.5 Корреляционный анализ признаков
+# 6.5. Корреляционный анализ признаков
+
 # Выбираем ключевые признаки для анализа
 key_features_idx = [1, 10, 23, 24, 7, 8]  # early_fraction, psd40, decay_tau, fit_quality, fwhm, rise_time
 key_features_names = ['Early fraction', 'PSD40', 'Decay τ', 'R²', 'FWHM', 'Rise time']
@@ -364,7 +394,8 @@ print("\nВыводы по корреляционному анализу:")
 print("- Ожидаемая высокая корреляция между PSD40 и Decay τ (оба характеризуют форму спада)")
 print("- Низкая корреляция между признаками → признаки дополняют друг друга")
 
-# 7 Создание композитного скора (composite score)
+# 7. Создание композитного скора (COMPOSITE SCORE)
+
 # Нормализация признаков (StandardScaler)
 scaler = StandardScaler()
 Xn = scaler.fit_transform(X)
@@ -460,13 +491,14 @@ plt.suptitle('Композитный скор для разделения гам
 plt.tight_layout()
 plt.show()
 
-print(f"\nСтатистика скора:")
+print("\nСтатистика скора:")
 print(f"- Минимум: {score_weighted.min():.4f}")
 print(f"- Максимум: {score_weighted.max():.4f}")
 print(f"- Среднее: {score_weighted.mean():.4f}")
 print(f"- Стандартное отклонение: {score_weighted.std():.4f}")
 
-# 8 Детекция аномалий (Кластер 2)
+# 8. Детекция аномалий (Кластер 2)
+
 print("""
 КРИТЕРИИ АНОМАЛЬНОСТИ (пороги основаны на статистическом анализе):
 -------------------------------------------------------------------
@@ -538,7 +570,7 @@ plt.suptitle('Критерии детекции аномалий (красным
 plt.tight_layout()
 plt.show()
 
-print(f"\nРезультаты детекции аномалий:")
+print("\nРезультаты детекции аномалий:")
 print(f"- Низкая энергия (< {energy_thresh:.0f}): {np.sum(X[:, ENERGY] < energy_thresh)}")
 print(f"- Плохое качество фита (< {fit_thresh:.3f}): {np.sum(X[:, FIT_QUALITY] < fit_thresh)}")
 print(f"- Экстремальное время спада (|z|>2.5): {np.sum(np.abs(decay_tau_norm) > 2.5)}")
@@ -546,7 +578,8 @@ print(f"- Аномальная асимметрия (|z|>3.0): {np.sum(np.abs(as
 print(f"- Экстремальное PSD40 (|z|>3.0): {np.sum(np.abs(psd40_norm) > 3.0)}")
 print(f"- Экстремальный FWHM (|z|>3.0): {np.sum(np.abs(fwhm_norm) > 3.0)}")
 
-# 9 Разделение гамма/нейтронов (KDE + FIND_PEAKS)
+# 9. Разделение гамма/нейтронов (KDE + FIND_PEAKS)
+
 labels = np.zeros(len(score_weighted), dtype=int)
 
 # Выделение аномалий в кластер 2
@@ -556,10 +589,6 @@ labels[anomaly_mask] = 2
 # Для нормальных сигналов - бинарная кластеризация
 normal_mask = ~anomaly_mask
 normal_scores = score_weighted[normal_mask]
-
-print("="*60)
-print("РАЗДЕЛЕНИЕ ГАММА/НЕЙТРОНОВ МЕТОДОМ KDE")
-print("="*60)
 
 if len(normal_scores) > 0:
     # Адаптивная ширина окна для KDE
@@ -628,7 +657,8 @@ print("\nРезультат бинарного разделения:")
 print(f"- Кластер 0 (левый): {np.sum(normal_labels == 0)} сигналов")
 print(f"- Кластер 1 (правый): {np.sum(normal_labels == 1)} сигналов")
 
-# 9.1 Анализ чувствительности весов композитного скора
+# 9.1. Анализ чувствительности весов композитного скора
+
 # Влияние веса Early на разделение
 
 if 'normal_mask' not in dir():
@@ -661,9 +691,9 @@ else:
         test_score_weighted += 0.015 * Xn[:, SHARP]
         
         # Разделение по медиане для анализа чувствительности
-        split = np.median(test_score_weighted[normal_mask])
-        split_points.append(split)
-        test_labels = test_score_weighted > split
+        split_point = np.median(test_score_weighted[normal_mask])
+        split_points.append(split_point)
+        test_labels = test_score_weighted > split_point
         
         # Silhouette score (только для нормальных сигналов)
         if len(np.unique(test_labels[normal_mask])) > 1:
@@ -695,7 +725,7 @@ else:
     plt.tight_layout()
     plt.show()
 
-# 9.2 Сравнение методов кластеризации (GMM и K-means)
+# 9.2. Сравнение методов кластеризации (GMM и K-means)
 # Сравнение методов бинарной кластеризации
 
 # Используем тот же normal_scores (после исключения аномалий)
@@ -718,7 +748,7 @@ early_gmm1 = early_normal[labels_gmm == 1].mean() if np.sum(labels_gmm==1)>0 els
 if early_gmm0 > early_gmm1:
     labels_gmm = 1 - labels_gmm  # инвертируем
 
-print(f"\n2. Gaussian Mixture Model (GMM):")
+print("\n2. Gaussian Mixture Model (GMM):")
 print(f"   - Кластер 0: {np.sum(labels_gmm == 0)} сигналов")
 print(f"   - Кластер 1: {np.sum(labels_gmm == 1)} сигналов")
 
@@ -731,16 +761,16 @@ early_kmeans1 = early_normal[labels_kmeans == 1].mean() if np.sum(labels_kmeans=
 if early_kmeans0 > early_kmeans1:
     labels_kmeans = 1 - labels_kmeans
 
-print(f"\n3. K-Means:")
+print("\n3. K-Means:")
 print(f"   - Кластер 0: {np.sum(labels_kmeans == 0)} сигналов")
 print(f"   - Кластер 1: {np.sum(labels_kmeans == 1)} сигналов")
 
 # Сравнительная таблица
-print("Сравнительная таблица ")
-print(f"{'Метод':<20} {'Кластер 0':<12} {'Кластер 1':<12} {'Преимущества':<20}")
-print(f"{'KDE (выбранный)':<20} {np.sum(normal_labels==0):<12} {np.sum(normal_labels==1):<12} {'Непараметрический':<20}")
-print(f"{'GMM':<20} {np.sum(labels_gmm==0):<12} {np.sum(labels_gmm==1):<12} {'Вероятностный':<20}")
-print(f"{'K-Means':<20} {np.sum(labels_kmeans==0):<12} {np.sum(labels_kmeans==1):<12} {'Простой':<20}")
+print("\nСравнительная таблица:")
+print(f"{'Метод':<20} {'Кластер 0':<12} {'Кластер 1':<12} {'Преимущества':<25}")
+print(f"{'KDE (выбранный)':<20} {np.sum(normal_labels==0):<12} {np.sum(normal_labels==1):<12} {'Непараметрический':<25}")
+print(f"{'GMM':<20} {np.sum(labels_gmm==0):<12} {np.sum(labels_gmm==1):<12} {'Вероятностный':<25}")
+print(f"{'K-Means':<20} {np.sum(labels_kmeans==0):<12} {np.sum(labels_kmeans==1):<12} {'Простой':<25}")
 
 # Визуализация сравнения методов
 fig, axes = plt.subplots(1, 3, figsize=(15, 4))
@@ -777,9 +807,11 @@ plt.suptitle('Сравнение методов бинарной кластер�
 plt.tight_layout()
 plt.show()
 
-# 10 Физическая калибровка кластеров
+# 10. Физическая калибровка кластеров
+
 print("""
-Физическое обоснование:
+ФИЗИЧЕСКОЕ ОБОСНОВАНИЕ:
+-----------------------
 Нейтроны при взаимодействии со сцинтиллятором (паратерфенил) вызывают:
 - Протоны отдачи (упругое рассеяние)
 - Медленную компоненту свечения
@@ -819,11 +851,12 @@ plt.ylabel('Нормализованная ранняя доля')
 plt.grid(True, alpha=0.3)
 plt.show()
 
-# 11 Финальная пост-обработка и сохранение
+# 11. Финальная пост-обработка и сохранение
+
 # Перемаркировка кластеров в порядке 0, 1, 2
 unique_labels = np.unique(labels)
 label_map = {old: new for new, old in enumerate(sorted(unique_labels))}
-labels = np.array([label_map[l] for l in labels])
+labels = np.array([label_map[label] for label in labels])
 
 # Итоговое распределение по кластерам
 print("\nРаспределение сигналов по кластерам:")
@@ -834,9 +867,7 @@ for i in range(3):
     print(f"{cluster_names[i]}: {c} ({c/len(labels)*100:.1f}%)")
 
 print("\nСтатистика ключевых признаков по кластерам:")
-print("-"*50)
 print(f"{'Кластер':<8} {'Early frac':<12} {'Decay τ':<10} {'PSD40':<10} {'R²':<10}")
-print("-"*50)
 for i in range(3):
     if np.sum(labels == i) > 0:
         early_mean = Xn[labels == i, EARLY].mean()
