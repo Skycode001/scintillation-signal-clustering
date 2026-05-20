@@ -1,1 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+*.ipynb.bak
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific (optional - закомментируйте, если хотите хранить данные)
+# Run200_Wave_0_1.txt
+
+# Output files (если не хотите хранить результаты в git)
+# submission.csv
+
+# Logs and databases
+*.log
+*.sqlite
+*.db
+
+# Virtual environment
+lib64/
+lib/
+include/
+share/
+bin/
+pyvenv.cfg
+pip-selfcheck.json
+
+Description.pdf
 Run200_Wave_0_1.txt
+solution.ipynb
+solution2.ipynb
